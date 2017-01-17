@@ -1,0 +1,175 @@
+package net.corda.node.services.vault.schemas.jpa
+
+import io.requery.Convert
+import io.requery.Persistable
+import net.corda.core.contracts.StateRef
+import net.corda.core.schemas.requery.converters.InstantConverter
+import net.corda.core.serialization.toHexString
+import java.io.Serializable
+import java.time.Instant
+import java.util.*
+import javax.persistence.*
+
+
+object VaultSchemaJPA {
+
+    /**
+     * A super class for all mapped states exported to a schema that ensures the [StateRef] appears on the database row.  The
+     * [StateRef] will be set to the correct value by the framework (there's no need to set during mapping generation by the state itself).
+     */
+    @MappedSuperclass open class PersistentState(@EmbeddedId var stateRef: PersistentStateRef? = null) : Persistable
+
+    /**
+     * Embedded [StateRef] representation used in state mapping.
+     */
+    @Embeddable
+    data class PersistentStateRef(
+            @Id
+            @Column(name = "transaction_id", length = 64)
+            var txId: String?,
+
+            @Id
+            @Column(name = "output_index")
+            var index: Int?
+    ) : Serializable {
+        constructor(stateRef: StateRef) : this(stateRef.txhash.bytes.toHexString(), stateRef.index)
+        /*
+         JPA Query requirement:
+         @Entity classes should have a default (non-arg) constructor to instantiate the objects when retrieving them from the database.
+        */
+        constructor() : this(null, null)
+    }
+
+
+    @Entity(name = "vaultJPA")
+    @Table(name = "vault_states")
+    class VaultConsumedState(
+        @Id
+        @Column(name = "transaction_id", length = 64, nullable = false)
+        var txId: String,
+        @Id
+        @Column(name = "output_index")
+        var index: Int,
+
+        @Column(name = "notary_name")
+        var notaryName: String,
+//
+        // references a concrete ContractState that is [QueryableState] and has a [MappedSchema]
+        @Column(name = "contract_state_class_name")
+        var contractStateClassName: String,
+        // references a concrete ContractState that is [QueryableState] and has a [MappedSchema] version
+        @Column(name = "contract_state_class_version")
+        var contractStateClassVersion: Int,
+
+        @Enumerated
+        @Column(name = "state_status")
+        var stateStatus: StateStatus,
+
+        // refers to timestamp recorded upon entering AWAITING_CONSENSUS state
+        @Column(name = "committed")
+        @Convert(InstantConverter::class)
+        var committed: Instant,
+
+         // refers to timestamp recorded upon entering CONSENSUS_AGREED_UNCONSUMED state
+        @Column(name = "notarised")
+        @Convert(InstantConverter::class)
+        var notarised: Instant,
+
+        // refers to timestamp recorded upon entering CONSENSUS_AGREED_CONSUMED state
+        @Column(name = "consumed")
+        @Convert(InstantConverter::class)
+        var consumed: Instant,
+
+        @Column(name = "lock_id", nullable = true)
+        var lockId: String
+    ) : Serializable, Persistable
+
+    enum class StateStatus {
+        AWAITING_CONSENSUS, CONSENSUS_AGREED_UNCONSUMED, CONSENSUS_AGREED_CONSUMED
+    }
+
+    /**
+     *  Abstract class which must be implemented by a concrete ContractState class
+     *  (eg. see [Cash.State])
+     **/
+    @Table(name = "vault_fungible_states")
+    @Entity
+    abstract class VaultFungibleState (
+
+        @OneToMany(orphanRemoval = true)
+        @JoinColumn(name="keyName")
+        var participants: Set<VaultKey>,
+
+        @OneToOne()
+        @JoinColumn(name="keyName")
+        var ownerKey: VaultKey,
+
+        @Column(name = "quantity")
+        var quantity: Long,
+        @Column(name = "currency_code")
+        var ccyCode: String,
+
+        @OneToOne()
+        @JoinColumn(name="keyName")
+        @Column(name = "issuer_key")
+        var issuerKey: VaultKey,
+        @Column(name = "issuer_reference")
+        var issuerRef: ByteArray,
+
+        @OneToMany()
+        @JoinColumn(name="keyName")
+        var exitKeys: Set<VaultKey>
+    ) : Serializable
+
+    /**
+     *  Abstract class which must be implemented by a concrete ContractState class
+     *  (eg. see [Cash.State])
+     **/
+    @Table(name = "vault_consumed_linear_states")
+    @Entity
+    abstract class VaultLinearState(
+
+        @OneToMany(orphanRemoval = true)
+        @JoinColumn(name="keyName")
+        var participants: Set<VaultKey>,
+
+        @OneToOne()
+        @JoinColumn(name="keyName")
+        var ownerKey: VaultKey,
+
+        @Column(name = "external_id")
+        var externalId: String,
+        @Column(name = "uuid", length = 36, unique = true, nullable = false)
+        var uuid: UUID,
+
+        @Column(name = "deal_reference")
+        var dealRef: String,
+        @OneToMany()
+        @JoinColumn(name="partyName")
+        var dealParties: Set<VaultParty>
+    ) : Serializable
+
+    @Table(name = "vault_keys")
+    @Entity
+    class VaultKey(
+        @Id
+        @GeneratedValue
+        var id: Int,
+
+        @Column(name = "keyName", length = 255)
+        var keyName: String
+    ) : Serializable, Persistable
+
+    @Table(name = "vault_parties")
+    @Entity
+    class VaultParty(
+        @Id
+        @GeneratedValue
+        var id: Int,
+
+        @Column(name = "partyName")
+        var partyName: String,
+        @Column(name = "partyKey", length = 255)
+        var partyKey: String
+    )  : Serializable, Persistable
+}

@@ -1,0 +1,38 @@
+apply plugin: 'idea'
+apply plugin: 'maven-publish'
+
+buildscript {
+    ext.jpa_version = '2.1.1'
+    ext.kotlin_version = '1.0.6'
+    ext.requery_version = '1.1.0'
+    ext.rxjava_version = '1.2.0'
+    ext.rxjava2_version = '2.0.2'
+    ext.reactor_version = '3.0.3.RELEASE'
+    repositories {
+        mavenLocal()
+        jcenter()
+    }
+    dependencies {
+        classpath 'com.jfrog.bintray.gradle:gradle-bintray-plugin:1.4'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath "org.jetbrains.dokka:dokka-gradle-plugin:0.9.8"
+        classpath "org.jetbrains.kotlin:kotlin-noarg:$kotlin_version"
+    }
+}
+
+allprojects {
+    repositories {
+        mavenLocal()
+        jcenter()
+        maven { url 'http://oss.jfrog.org/artifactory/oss-snapshot-local' }
+    }
+}
+
+idea {
+    project {
+        jdkName = '1.8'
+    }
+}
+
+
+
